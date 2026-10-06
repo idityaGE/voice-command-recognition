@@ -2,6 +2,11 @@
 
 Usage:
     python train.py --data ../data --epochs 15 --batch-size 256 --out ../models
+    python train.py --data ../data --epochs 40 --augment --weighted --out ../models
+
+Flags --augment (time shift + background-noise mix + SpecAugment) and
+--weighted (class-weighted loss) are the accuracy push: they make training
+see a harder, more balanced version of the data.
 
 Saves:
     models/keyword_cnn.pt      (best checkpoint by validation accuracy)
@@ -22,14 +27,20 @@ from dataset import SpeechCommandsDataset
 from models import KeywordCNN, count_parameters
 
 
-def run_epoch(model, loader, criterion, optimizer, device, train: bool):
+def run_epoch(model, loader, criterion, optimizer, device, train: bool,
+              amp: bool = False):
     model.train(train)
     total_loss, correct, total = 0.0, 0, 0
     for xb, yb in loader:
         xb, yb = xb.to(device), yb.to(device)
         with torch.set_grad_enabled(train):
-            logits = model(xb)
-            loss = criterion(logits, yb)
+            if amp and train:
+                with torch.amp.autocast("cpu", dtype=torch.bfloat16):
+                    logits = model(xb)
+                    loss = criterion(logits, yb)
+            else:
+                logits = model(xb)
+                loss = criterion(logits, yb)
             if train:
                 optimizer.zero_grad()
                 loss.backward()
@@ -48,12 +59,19 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--num-workers", type=int, default=2)
     ap.add_argument("--out", default="../models")
+    ap.add_argument("--augment", action="store_true",
+                    help="on-the-fly augmentation: time shift, background-noise "
+                         "mixing, SpecAugment (train split only)")
+    ap.add_argument("--weighted", action="store_true",
+                    help="class-weighted cross-entropy to counter class imbalance")
+    ap.add_argument("--amp", action="store_true",
+                    help="bfloat16 mixed precision on CPU (~1.5x faster training)")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"device: {device}")
+    print(f"device: {device} | augment: {args.augment} | weighted: {args.weighted}")
 
-    train_ds = SpeechCommandsDataset(args.data, "train")
+    train_ds = SpeechCommandsDataset(args.data, "train", augment=args.augment)
     val_ds = SpeechCommandsDataset(args.data, "val")
     print(f"train: {len(train_ds):,} clips | val: {len(val_ds):,} clips | "
           f"classes: {len(train_ds.classes)}")
@@ -66,7 +84,14 @@ def main():
     model = KeywordCNN(num_classes=len(train_ds.classes)).to(device)
     print(f"parameters: {count_parameters(model):,}")
 
-    criterion = nn.CrossEntropyLoss()
+    weight = None
+    if args.weighted:
+        counts = torch.zeros(len(train_ds.classes))
+        for _, y in train_ds.items:
+            counts[y] += 1
+        weight = (counts.sum() / counts / len(counts)).to(device)  # rarer -> larger
+        print(f"class weights: min {weight.min():.2f} / max {weight.max():.2f}")
+    criterion = nn.CrossEntropyLoss(weight=weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="max", factor=0.5, patience=2)
@@ -79,8 +104,10 @@ def main():
     ckpt_path = os.path.join(args.out, "keyword_cnn.pt")
     t0 = time.time()
     for epoch in range(1, args.epochs + 1):
-        tr_loss, tr_acc = run_epoch(model, train_loader, criterion, optimizer, device, True)
-        va_loss, va_acc = run_epoch(model, val_loader, criterion, optimizer, device, False)
+        tr_loss, tr_acc = run_epoch(model, train_loader, criterion, optimizer,
+                                    device, True, amp=args.amp)
+        va_loss, va_acc = run_epoch(model, val_loader, criterion, optimizer,
+                                    device, False)
         scheduler.step(va_acc)
         log.append({"epoch": epoch, "train_loss": tr_loss, "train_acc": tr_acc,
                     "val_loss": va_loss, "val_acc": va_acc,

@@ -11,12 +11,14 @@ numbers are comparable with published results on this dataset.
 """
 
 import os
+import random
 from pathlib import Path
 
 import torch
 from torch.utils.data import Dataset
 
 from features import load_waveform, waveform_to_logmel
+from augment import augment_waveform, spec_augment
 
 IGNORE_DIRS = {"_background_noise_", "custom"}
 
@@ -37,8 +39,11 @@ def _read_list(data_root: str, filename: str) -> set[str]:
 
 
 class SpeechCommandsDataset(Dataset):
-    def __init__(self, data_root: str, split: str = "train"):
+    def __init__(self, data_root: str, split: str = "train",
+                 augment: bool = False):
         assert split in ("train", "val", "test")
+        # Augmentation only ever applies to the training split.
+        self.augment = augment and split == "train"
         self.classes = discover_classes(data_root)
         self.class_to_idx = {c: i for i, c in enumerate(self.classes)}
 
@@ -58,10 +63,25 @@ class SpeechCommandsDataset(Dataset):
                 elif split == "test" and in_test:
                     self.items.append((str(wav_path), self.class_to_idx[cls]))
 
+        # Preload background-noise recordings once for noise augmentation.
+        self.noise_bank: list[torch.Tensor] = []
+        if self.augment:
+            noise_dir = Path(data_root) / "_background_noise_"
+            for wav_path in sorted(noise_dir.glob("*.wav")):
+                try:
+                    self.noise_bank.append(load_waveform(str(wav_path)))
+                except Exception:
+                    pass
+
     def __len__(self) -> int:
         return len(self.items)
 
     def __getitem__(self, idx: int):
         path, label = self.items[idx]
-        logmel = waveform_to_logmel(load_waveform(path))  # (1, 40, 101)
+        wav = load_waveform(path)
+        if self.augment:
+            wav = augment_waveform(wav, self.noise_bank)  # shift + noise mix
+        logmel = waveform_to_logmel(wav)  # (1, 40, 101)
+        if self.augment and random.random() < 0.5:
+            logmel = spec_augment(logmel)  # mask time/freq bands
         return logmel, label
