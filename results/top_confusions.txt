@@ -1,0 +1,16 @@
+most confused word pairs (true<->predicted), test set:
+          go <-> no         : 105 confusions
+       three <-> tree       : 100 confusions
+      visual <-> zero       : 97 confusions
+        five <-> on         : 90 confusions
+        down <-> no         : 87 confusions
+      follow <-> four       : 85 confusions
+     forward <-> four       : 82 confusions
+        down <-> go         : 73 confusions
+          go <-> two        : 71 confusions
+      sheila <-> zero       : 60 confusions
+      marvin <-> nine       : 53 confusions
+         off <-> up         : 48 confusions
+         dog <-> down       : 47 confusions
+        stop <-> up         : 46 confusions
+         one <-> wow        : 44 confusions

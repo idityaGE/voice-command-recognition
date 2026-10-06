@@ -1,0 +1,7 @@
+{
+  "model": "LinearSVC on 20-dim mean-MFCC",
+  "n_train_subset": 8000,
+  "n_train_total": 84843,
+  "n_test": 11005,
+  "test_accuracy": 0.2266242616992276
+}

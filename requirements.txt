@@ -1,0 +1,23 @@
+# Core deep learning
+torch
+torchaudio
+
+# Classical ML + audio
+scikit-learn
+librosa
+soundfile
+
+# Demo + visualization
+streamlit
+matplotlib
+
+# Presentation generation
+python-pptx
+
+# Optional: needed only for recording your own voice clips
+# sounddevice
+
+# Note: on CPU-only machines, install the CPU wheels explicitly:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# On a machine with an NVIDIA GPU, plain `pip install torch torchaudio`
+# will fetch the CUDA build automatically.
