@@ -1,0 +1,19 @@
+# Dataset (large, download separately -- see README)
+data/
+!data/custom/.gitkeep
+!data/README.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Streamlit / misc
+.streamlit/
+*.log
+.DS_Store
